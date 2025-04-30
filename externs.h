@@ -40,6 +40,7 @@ extern int RUN_START; //Where the run currently starts.
 
 extern unsigned short SPARKLE_MS;
 extern unsigned short SPARKLE_CHANCE;
+extern int SPARKLE_SIZE;
 extern COLOR SPARKLE_COLOR;
 
 extern unsigned short BLINK[];

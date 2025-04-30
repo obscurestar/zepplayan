@@ -47,6 +47,7 @@ int RUN_START; //Where the run currently starts.
 
 unsigned short SPARKLE_MS;  //Time between sparkles.
 unsigned short SPARKLE_CHANCE; //No sparkles
+int SPARKLE_SIZE;
 COLOR SPARKLE_COLOR;
 
 int BLINK_STATE;
@@ -118,7 +119,15 @@ void doSparkle()
   {
     if (random(100) < SPARKLE_CHANCE)
     {
-      H_LEDS.setPixelColor( i, SPARKLE_COLOR.l);
+      int to_light = SPARKLE_SIZE;
+      if (SPARKLE_SIZE < 0)
+      {
+        to_light = random( SPARKLE_SIZE * -1 );
+      }
+      for (int j=0;j<=to_light;++j)
+      {
+        H_LEDS.setPixelColor( (i + j) % NUM_LEDS, SPARKLE_COLOR.l ); 
+      }
     }
   }
 }
@@ -329,6 +338,7 @@ void doLighting()
     if (!DISPLAYED && (SPARKLE_CHANCE > 0 || BLINKING))
     {
       renderLEDS();
+      delay(200);
     }
   }
 }
@@ -373,13 +383,13 @@ void initializeParameters()
   TIME_NOW=0;
 
   SPARKLE_COLOR.l = 0;
-
-  //TESTING REMOVEME
+  SPARKLE_SIZE = 1;
+  /*TESTING REMOVEME
   MAXBRIGHT=100;
   RUN_DIR=1;
   RUN_ON_MS=1;
   RUN_XFADE_MS=2000;
-  //END TESTING
+  */ //END TESTING
 }
 void setup() {
   BlueSerial.begin(9600);

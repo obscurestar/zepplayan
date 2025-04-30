@@ -96,11 +96,12 @@ const char PARAM8[] PROGMEM = "percent chance per pixel(0-100): ";
 const char PARAM9[] PROGMEM = "direction (-1 to 1): ";
 const char PARAM10[] PROGMEM = "color (RGB 0 to oct 888 or name. x to end): ";
 const char PARAM11[] PROGMEM = "frequency (ms): ";
-const char PARAM12[] PROGMEM = "Decay Odds: (lower is faster) ";
+const char PARAM12[] PROGMEM = "Decay Odds (lower is faster): ";
 const char PARAM13[] PROGMEM = "ON ms (x to end): ";
-const char PARAM14[] PROGMEM = "Shift Odds: (lower is faster)";
+const char PARAM14[] PROGMEM = "Shift Odds (lower is faster): ";
+const char PARAM15[] PROGMEM = "Sparkle size in pixels. Negative for random to num: ";
 
-const char *const PARAMS[] PROGMEM = { PARAM0, PARAM1, PARAM2, PARAM3, PARAM4, PARAM5, PARAM6, PARAM7, PARAM8, PARAM9, PARAM10, PARAM11, PARAM12, PARAM13, PARAM14 };
+const char *const PARAMS[] PROGMEM = { PARAM0, PARAM1, PARAM2, PARAM3, PARAM4, PARAM5, PARAM6, PARAM7, PARAM8, PARAM9, PARAM10, PARAM11, PARAM12, PARAM13, PARAM14, PARAM15 };
 
 enum {
   P_NUM,   //Numeric:  A -1 to 32767 integer value
@@ -593,17 +594,39 @@ void parseParams()
       }
       break;
     case CMD_SPARKLE:
-      if (PARAM == 3)
+      if (PARAM == 4) // Sparkle size
+      {
+        if (parseInt(val, INT_DECIMAL))
+        {
+          if (val < (NUM_LEDS * -1) )
+          {
+            val = NUM_LEDS * -1;
+          }
+          if (val == 0)
+          {
+            val = 1;
+          }
+          if (val > NUM_LEDS)
+          {
+            val = NUM_LEDS;
+          }
+          SPARKLE_SIZE = val;
+          endParse(true);
+          return;
+        }
+      }
+      
+      if (PARAM == 3)  //Sparkle MS
       {
         if (parseInt(val, INT_DECIMAL)) //int
         {
           SPARKLE_MS = val;
-          endParse(true);
-          return;
+          printMsg(PARAMS, 15); //Sparkle size
         }
         else
         {
           PARAM = 2;
+          printMsg(PARAMS, 11); //Sparkle MS
         }
         break;
       }
