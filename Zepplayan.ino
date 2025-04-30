@@ -13,6 +13,7 @@
 #include "blue_ui.h"
 #include "rain.h"
 #include "randoms.h"
+#include "animate.h"
 
 //WARNING!!!!  NEOPIXEL RGB is 1,2,3 bytes of long, not 0.
 //AND REVERSE ORDER
@@ -21,7 +22,7 @@
 //const unsigned long gTimeToCooldown = 1000l * 3l;        //3 sec
 
 const short PIN_LED = 6;  //Pin connecting the IN on the LED strip to the CPU board.
-const short NUM_LEDS = 54; //Num LEDS in our array.
+const short NUM_LEDS = 16; //Num LEDS in our array.
 const short MAX_BANDS=12;  //Maximum number of color bands.
 
 SoftwareSerial BlueSerial(4, 5); //TX, RX pins
@@ -34,34 +35,33 @@ unsigned long TIMERS[ NUM_TIMERS ];
 COLOR PIXELS[NUM_LEDS]; //Duplicate of array used by H_LEDS
 char BUFFER[255]; /*Eat up a lot of memory for copying strings*/
 COLOR BANDS[MAX_BANDS];
-int NUM_BANDS=0;
-int BAND_WIDTH=2;
-int MODE = CMD_COLOR;
-int MODE_NEW = MODE;
-signed short RUN_DIR=0;     //Direction of scrolling.
-unsigned short RUN_ON_MS=500;  //On for 
-unsigned short RUN_XFADE_MS=500; //Crossfade duration.
-unsigned short SPARKLE_MS=500;  //Time between sparkles.
-unsigned short SPARKLE_CHANCE=0; //No sparkles
-int BLINK_STATE = BLINK_ON;
-unsigned short BLINK[4];
+int NUM_BANDS;
+int BAND_WIDTH;
+int MODE;
+int MODE_NEW;
+signed short RUN_DIR;     //Direction of scrolling.
+unsigned short RUN_ON_MS;  //On for 
+unsigned short RUN_XFADE_MS; //Crossfade duration.
+int RUN_MODE;  //Displaying or fading
+int RUN_START; //Where the run currently starts.
 
-bool BLINKING=false;
-
+unsigned short SPARKLE_MS;  //Time between sparkles.
+unsigned short SPARKLE_CHANCE; //No sparkles
 COLOR SPARKLE_COLOR;
-int RUN_MODE=RUN_ON;  //Displaying or fading
-int RUN_START=0; //Where the run currently starts.
 
-bool MODE_CHANGED=true;
-bool FLASHLIGHT = false;
-bool DISPLAYED = false;   //Set true if display has run this time around.
-unsigned short RAND_ON_MS=10; //Time to wait between steps in a display
+int BLINK_STATE;
+unsigned short BLINK[4];
+bool BLINKING;
+
+bool MODE_CHANGED;
+bool FLASHLIGHT;
+bool DISPLAYED;   //Set true if display has run this time around.
+unsigned short RAND_ON_MS; //Time to wait between steps in a display
 
 //Initialize pattern classes
 Rain rain;
 
-//Pollute the global namespace!
-signed int MAXBRIGHT = 2;      //Maximum brightness.
+signed int MAXBRIGHT;      //Maximum brightness.
 
 bool times_up(unsigned long to_check, int timer_id)
 {
@@ -101,66 +101,14 @@ void trimBrightness()
   }
 }
 
-void handleRun()
-{
-  if (RUN_DIR == 0) //Early bailout
-  {
-      return;
-  }
-
-  if (RUN_MODE == RUN_ON)
-  {
-    for (int pos=0;pos<NUM_LEDS;++pos)
-    {
-      H_LEDS.setPixelColor( (pos+RUN_START+NUM_LEDS)%NUM_LEDS ,PIXELS[pos].l);
-    }
-    
-    if ( times_up((long)RUN_ON_MS, TID_RUN) )
-    {
-      RUN_START = (RUN_START + NUM_LEDS + RUN_DIR) % NUM_LEDS;
-      RUN_MODE = RUN_FADE;
-    }
-
-    return;
-  }
-
-  float percent = (float)(TIME_NOW - TIMERS[TID_RUN]) / (float)RUN_XFADE_MS;
-
-  COLOR ncol;
-  
-  for (int led=0;led<=NUM_LEDS;++led)
-  {
-    int pos = led % NUM_LEDS;
-    int next = (pos + RUN_DIR + NUM_LEDS) % NUM_LEDS;
-    int out = (pos+RUN_START+NUM_LEDS)%NUM_LEDS;
-
-    for (int i=0;i<4;++i)
-    {
-      int dist = abs(PIXELS[pos].c[i] - PIXELS[next].c[i]);
-      unsigned char pval = round( (float)dist * percent );
-
-      ncol.c[i] = PIXELS[pos].c[i];
-      if ( ncol.c[i] <= PIXELS[next].c[i])
-      {
-        ncol.c[i] += pval;
-      }
-      else
-      {
-        ncol.c[i] -= pval;
-      }
-      clamp(ncol.c[i]); //waste cycles for paranoia
-    }
-    H_LEDS.setPixelColor( out ,ncol.l);
-  }
-  
-  if (times_up((long)RUN_XFADE_MS, TID_RUN))
-  {
-    RUN_MODE = RUN_ON;
-  }
-}
-
 void doSparkle()
 {
+  if (SPARKLE_CHANCE ==0)
+  {
+    //Early abort
+    return;
+  }
+  
   //Don't change faster than we need to.
   if (!times_up((long)SPARKLE_MS, TID_SPARKLE) )
   {
@@ -189,7 +137,7 @@ void doBlink()
   {
     if (BLINK_STATE == BLINK_OFF)
     {
-      percent = 0;
+      percent = 1.0;
     }
     else
     {
@@ -198,7 +146,7 @@ void doBlink()
         percent = (float)(TIME_NOW - TIMERS[TID_BLINK])/(float)BLINK[BLINK_STATE];
         if (percent>1.0f)
         {
-          percent = 1.0f;
+          percent = 0.0f;
         }
       }
 
@@ -332,7 +280,6 @@ void makeStripes()
   {
     H_LEDS.setPixelColor(i, 0);
   }
-  renderLEDS();
 }
 
 void doLighting()
@@ -345,6 +292,10 @@ void doLighting()
 
         renderLEDS();
         break;
+      case CMD_QUIT:
+        setColors(PIXELS[0].l);
+        renderLEDS();
+        break;
       case CMD_COLOR:
         if( MODE_CHANGED )
         {
@@ -353,18 +304,18 @@ void doLighting()
         }
         break;
       case CMD_RAIN:
-        if (!times_up((long)RAND_ON_MS, TID_RAND) )
-        {
-          return;
-        }
-        rain.mMaxBrightness=MAXBRIGHT;
         rain.loopStep();
         renderLEDS();
         break;
       case CMD_LIST:
       case CMD_PRIDE:
       case CMD_WIDTH:
-        makeStripes();
+        if ( MODE_CHANGED )
+        {
+          makeStripes();
+          renderLEDS();
+        }
+        MODE = CMD_RUN;
         break;
       case CMD_RND:
         doRandom(true);
@@ -382,21 +333,64 @@ void doLighting()
   }
 }
 
+void initializeParameters()
+{
+  //The functionality of setup, also used for Panic QUIT.
+  int i;
+  
+  for (i=0;i<NUM_TIMERS;++i)
+  {
+    TIMERS[i] = 0;
+  }
+  NUM_BANDS=0;
+  BAND_WIDTH=2;
+  MODE = CMD_COLOR;
+  MODE_NEW = MODE;
+  RUN_DIR=0;     //Direction of scrolling.
+  RUN_ON_MS=500;  //On for 
+  RUN_XFADE_MS=500; //Crossfade duration.
+  SPARKLE_MS=500;  //Time between sparkles.
+  SPARKLE_CHANCE=0; //No sparkles
+  BLINK_STATE = BLINK_ON;
+
+  for (i=0;i<4;++i)
+  {
+    BLINK[i] = 0;
+  }
+  BLINKING=false;
+
+  RUN_MODE=RUN_ON;  //Displaying or fading
+  RUN_START=0; //Where the run currently starts.
+
+  MODE_CHANGED=true;
+  FLASHLIGHT = false;
+  DISPLAYED = false;   //Set true if display has run this time around.
+  RAND_ON_MS=10; //Time to wait between steps in a display
+  MAXBRIGHT = 2;      //Maximum brightness.
+  
+  PIXELS[0].l = 0x007000FF;
+  rain.mShiftOdds = 200;
+  TIME_NOW=0;
+
+  SPARKLE_COLOR.l = 0;
+
+  //TESTING REMOVEME
+  MAXBRIGHT=100;
+  RUN_DIR=1;
+  RUN_ON_MS=1;
+  RUN_XFADE_MS=2000;
+  //END TESTING
+}
 void setup() {
   BlueSerial.begin(9600);
-
-  PIXELS[0].l = 0x007000FF;
+ 
+  initializeParameters();
+  
   randomSeed(analogRead(0));  //Seed randomizer by grabbing whatever noise is on analog pin 0 at the moment.
 
   H_LEDS.begin(); //Initialize communication with LED array.
   H_LEDS.show(); //No values are set so this should be black.
   rain.mShiftOdds = 200;
-  TIME_NOW=0;
-  for (int i=0;i<NUM_TIMERS;++i)
-  {
-    TIMERS[i] = 0;
-  }
-  SPARKLE_COLOR.l = 0;
 
   showHelp();
 }

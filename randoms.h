@@ -7,10 +7,12 @@
 COLOR getRandomColor()
 {
   COLOR c;
-  for (int i=0;i<4;++i)
-  {
-    c.c[i] = random(255);
-  }
+  do {
+    for (int i=0;i<4;++i)
+    {
+      c.c[i] = (random(16) * 16) - 1;
+    }
+  } while (c.l == 0xFFFFFFFF);
   return c;
 }
 

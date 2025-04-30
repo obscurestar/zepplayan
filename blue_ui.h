@@ -35,10 +35,11 @@ const char CMD9[] PROGMEM = "FLASHLIGHT";
 const char CMD10[] PROGMEM = "SPARKLE";
 const char CMD11[] PROGMEM = "WIDTH";
 const char CMD12[] PROGMEM = "HELP";
+const char CMD13[] PROGMEM = "QUIT";
 
-const char *const CMDS[] PROGMEM = { CMD0, CMD1, CMD2, CMD3, CMD4, CMD5, CMD6, CMD7, CMD8, CMD9, CMD10, CMD11, CMD12 };
+const char *const CMDS[] PROGMEM = { CMD0, CMD1, CMD2, CMD3, CMD4, CMD5, CMD6, CMD7, CMD8, CMD9, CMD10, CMD11, CMD12, CMD13 };
 
-const char DESC0[] PROGMEM = "Digital Rain";
+const char DESC0[] PROGMEM = "Digital Rain\n\t<decay_odds>Likelihood of increasing base color\n\t<shift_odds>Likelihood of changing base color.";
 const char DESC1[] PROGMEM = "All a random color";
 const char DESC2[] PROGMEM = "Each a random color";
 const char DESC3[] PROGMEM = "Pride Rainbow";
@@ -51,10 +52,11 @@ const char DESC9[] PROGMEM = "Toggle flashlight on and off.";
 const char DESC10[] PROGMEM = "Sparkle behavior for patterns.";
 const char DESC11[] PROGMEM = "Change width of list bands";
 const char DESC12[] PROGMEM = "Display this.\n\tCase-insensitive partial names allowed.";
+const char DESC13[] PROGMEM = "QUIT current display, reset to default.";
 
-const char *const DESCS[] PROGMEM = { DESC0, DESC1, DESC2, DESC3, DESC4, DESC5, DESC6, DESC7, DESC8, DESC9, DESC10, DESC11, DESC12 };
+const char *const DESCS[] PROGMEM = { DESC0, DESC1, DESC2, DESC3, DESC4, DESC5, DESC6, DESC7, DESC8, DESC9, DESC10, DESC11, DESC12, DESC13 };
 
-const int MAX_CMDS = 12;
+const int MAX_CMDS = 13;
 
 const char COL0[] PROGMEM = "RED";
 const char COL1[] PROGMEM = "ORANGE";
@@ -88,16 +90,17 @@ const char PARAM2[] PROGMEM = "crossfade ms: ";
 const char PARAM3[] PROGMEM = "fadeout ms: ";
 const char PARAM4[] PROGMEM = "fadein ms: ";
 const char PARAM5[] PROGMEM = "pixels per band: ";
-const char PARAM6[] PROGMEM = "color (GRB 0 to oct 888 or name): ";
+const char PARAM6[] PROGMEM = "color (RGB 0 to oct 888 or name): ";
 const char PARAM7[] PROGMEM = "percent brightness (0-100): ";
 const char PARAM8[] PROGMEM = "percent chance per pixel(0-100): ";
 const char PARAM9[] PROGMEM = "direction (-1 to 1): ";
-const char PARAM10[] PROGMEM = "color (GRB 0 to oct 888 or name. x to end): ";
+const char PARAM10[] PROGMEM = "color (RGB 0 to oct 888 or name. x to end): ";
 const char PARAM11[] PROGMEM = "frequency (ms): ";
-const char PARAM12[] PROGMEM = "1 in N odds: ";
+const char PARAM12[] PROGMEM = "Decay Odds: (lower is faster) ";
 const char PARAM13[] PROGMEM = "ON ms (x to end): ";
+const char PARAM14[] PROGMEM = "Shift Odds: (lower is faster)";
 
-const char *const PARAMS[] PROGMEM = { PARAM0, PARAM1, PARAM2, PARAM3, PARAM4, PARAM5, PARAM6, PARAM7, PARAM8, PARAM9, PARAM10, PARAM11, PARAM12, PARAM13 };
+const char *const PARAMS[] PROGMEM = { PARAM0, PARAM1, PARAM2, PARAM3, PARAM4, PARAM5, PARAM6, PARAM7, PARAM8, PARAM9, PARAM10, PARAM11, PARAM12, PARAM13, PARAM14 };
 
 enum {
   P_NUM,   //Numeric:  A -1 to 32767 integer value
@@ -114,8 +117,9 @@ const char STR3[] PROGMEM = "Parameter must be an integer.";
 const char STR4[] PROGMEM = "Percentage must be 0-100";
 const char STR5[] PROGMEM = "Direction must be -1 to 1";
 const char STR6[] PROGMEM = "Invalid Color ID";
+const char STR7[] PROGMEM = "Parameter must be a positive integer";
 
-const char *const STRS[] PROGMEM = { STR0, STR1, STR2, STR3, STR4, STR5, STR6 };
+const char *const STRS[] PROGMEM = { STR0, STR1, STR2, STR3, STR4, STR5, STR6, STR7 };
 
 //  FUNCTIONS  ////////////////////////////////////////////////////////////////
 void getMem(char* const* table, int index)
@@ -213,25 +217,63 @@ void endParse( bool changed)
   PARAM = 0;
 }
 
-bool parseInt(int &val, int msg_no)
+bool parseInt(int &val, int int_type)
 {
   //Try to convert CMDBUF to a number.  Returns false if not int.  value as val param, 
   char *c;
   char *endptr;
 
   c = CMDBUF;
-   // Convert the string to a long integer
-   val = (int)strtol(c, &endptr, 10);
-   if (endptr != c+(strlen(CMDBUF)))
-   {
-      if (msg_no > -1)
+  // Convert the string to a long integer
+  val = (int)strtol(c, &endptr, 10);
+  if (endptr != c+(strlen(CMDBUF)))
+  {
+    if (int_type != INT_COLOR)
+    {
+      //Failed to parse.
+      printlnMsg(STRS, int_type);
+    }
+    return false;
+  }
+
+  bool bad=false;
+  //Bounds checking
+  switch(int_type)
+  {
+    case INT_PERCENT:
+      if (val < 0 || val > 100)
       {
-        //Print error message.
-        printlnMsg(STRS, msg_no);
+        bad = true;
       }
-      return false;
-   }
-   return true;
+      break;
+    case INT_DIRECTION:
+      if (val < -1 || val > 1)
+      {
+        bad = true;
+      }
+      break;
+    case INT_COLOR:
+      if (val < 0 || val > 8)
+      {
+        bad = true;
+      }
+      break;
+    case INT_POSITIVE:
+      if (val < -1)
+      {
+        bad = true;
+      }
+      break;
+    default:
+      //INT_DECIMAL and INT_COLOR are silent.
+      break;
+  }
+
+  if (bad && int_type != INT_COLOR)
+  {
+    printlnMsg(STRS, int_type);
+  }
+  return true;
 }
 
 bool parseColor(COLOR &color)
@@ -241,18 +283,18 @@ bool parseColor(COLOR &color)
 
   int val;
   color.l = 0;
-  if (parseInt(val, -1))
+  if (parseInt(val, INT_COLOR))
   {
     //Might be a numeric  (hand parsing because it's easier)
     if (strlen(CMDBUF)<0 || strlen(CMDBUF)>3)
     {
       return false;
     }
-    for (int i=0;i<strlen(CMDBUF);++i)
+    for (int i=0;i<strlen(CMDBUF) && i<3;++i)
     {
       if (CMDBUF[i] >= '0' && CMDBUF[i] <= '8')
       {
-        color.c[i+1] = (unsigned char)clamp((int)(CMDBUF[i] - '0') * 32);
+        color.c[2-i] = (unsigned char)clamp((int)(CMDBUF[i] - '0') * 32);
       }
       else
       {
@@ -301,11 +343,15 @@ void parseParams()
       showHelp();
       endParse(false);
       return;
+    case CMD_QUIT:  //Reset everything to default.
+      initializeParameters();
+      endParse(true);
+      return;
     case CMD_RND:
     case CMD_CHAOS:
       if (PARAM > 0)
       {       
-        if ( parseInt(val, 2) )
+        if ( parseInt(val, INT_DECIMAL) )
         {
           RAND_ON_MS = val;
           endParse(true);
@@ -331,7 +377,7 @@ void parseParams()
     case CMD_WIDTH:
       if (PARAM > 0)
       {
-        if(parseInt(val,3))
+        if(parseInt(val,INT_DECIMAL))
         {
           makeBandWidth(val);
           endParse(true);
@@ -393,14 +439,12 @@ void parseParams()
       if (PARAM > 0)
       {
         int val;
-        if (parseInt(val,4))
+        if (parseInt(val,INT_PERCENT))
         {
-          if (val >= 0 && val <= 100)
-          {
-            MAXBRIGHT = val;
-            endParse(true);
-            return;
-          }
+          MAXBRIGHT = val;
+          rain.mMaxBrightness=round( ((float)MAXBRIGHT/100.0f) * (float)255 );
+          endParse(true);
+          return;
         }
       }
       
@@ -411,12 +455,10 @@ void parseParams()
       if (PARAM == 3)
       {
         //crossfade ms
-        if(parseInt(val,3))
+        if(parseInt(val, INT_DECIMAL))
         {
           RUN_XFADE_MS = val;
-          RUN_DIR = PTMP;
-          BlueSerial.print("RUNDIR ");
-          BlueSerial.print(RUN_DIR);
+          RUN_DIR = (-1*PTMP);
           endParse(true);
           return;
         }
@@ -427,7 +469,7 @@ void parseParams()
       if (PARAM == 2)
       {
         //hold ms
-        if(parseInt(val,3))
+        if(parseInt(val,INT_DECIMAL))
         {
           RUN_ON_MS = val;
           printMsg(PARAMS, 2);
@@ -443,18 +485,15 @@ void parseParams()
       if (PARAM == 1 )
       {
         //Direction
-        if(parseInt(val,5))
+        if(parseInt(val,INT_DIRECTION))
         {
-          if (val >= -1 && val <= 1)
+          if (val==0)
           {
-            if (val==0)
-            {
-              RUN_DIR=0;
-              endParse(true);
-            }
-            PTMP = val;
-            printMsg(PARAMS, 0);
+            RUN_DIR=0;
+            endParse(true);
           }
+          PTMP = val;
+          printMsg(PARAMS, 0);
         }
         else
         {
@@ -472,7 +511,7 @@ void parseParams()
     case CMD_BLINK:
       if (PARAM == 4)
       {
-        if (parseInt(val,3))
+        if (parseInt(val,INT_DECIMAL))
         {
           BLINK[BLINK_IN] = val;
           BLINKING=true;
@@ -482,9 +521,9 @@ void parseParams()
         printMsg(PARAMS,4);
         break;
       }
-      if (PARAM == 3)
+      if (PARAM == 3)  //FadOut ms
       {
-        if (parseInt(val,3))
+        if (parseInt(val,INT_DECIMAL))
         {
           BLINK[BLINK_OUT] = val;
           printMsg(PARAMS,4);
@@ -493,9 +532,9 @@ void parseParams()
         printMsg(PARAMS,3);
         return;
       }
-      if (PARAM == 2)
+      if (PARAM == 2) //OFF For
       {
-        if (parseInt(val,3))
+        if (parseInt(val,INT_DECIMAL))
         {
           BLINK[BLINK_OFF] = val;
           printMsg(PARAMS,3);
@@ -504,24 +543,22 @@ void parseParams()
         printMsg(PARAMS, 1);
         return;
       }
-      if (PARAM == 1)
+      if (PARAM == 1) //ON For
       {
-        if (parseInt(val,3))
+
+        if (CMDBUF[0] == 'x' || CMDBUF[0] == 'X')
+        {
+          BLINKING=false;
+          endParse(true);
+          return;
+        }
+        else if ( parseInt(val, INT_DECIMAL) )
         {
           BLINK[BLINK_ON] = val;
-        }
-        else
-        {
-          if (CMDBUF[0] == 'x' || CMDBUF[0] == 'X')
-          {
-            BLINKING=false;
-            endParse(true);
-            return;
-          }
-          printMsg(PARAMS, 13);
+          printMsg(PARAMS, 1);
           break;
         }
-        printMsg(PARAMS, 1);
+        PARAM=0;
       }
       if (PARAM == 0)
       {
@@ -531,9 +568,9 @@ void parseParams()
     case CMD_RAIN:
       if (PARAM > 1)
       {
-        if (parseInt(val,3))
+        if (parseInt(val,INT_POSITIVE))
         {
-          RAND_ON_MS = val;
+          rain.mDecayRate = val;
           endParse(true);
           return;
         }
@@ -542,10 +579,10 @@ void parseParams()
       }
       if (PARAM == 1)
       {
-        if (parseInt(val,3))
+        if (parseInt(val,INT_POSITIVE))
         {
           rain.mShiftOdds = val;
-          printMsg(PARAMS, 0);
+          printMsg(PARAMS, 14);
           break;
         }
         PARAM = 0;
@@ -558,7 +595,7 @@ void parseParams()
     case CMD_SPARKLE:
       if (PARAM == 3)
       {
-        if (parseInt(val, 3)) //int
+        if (parseInt(val, INT_DECIMAL)) //int
         {
           SPARKLE_MS = val;
           endParse(true);
@@ -585,7 +622,7 @@ void parseParams()
       }
       if (PARAM == 1) //Sparkle frequency
       {
-        if (parseInt(val, 3))
+        if (parseInt(val, INT_DECIMAL))
         {
           if (val >= 0 && val <= 100)
           {

@@ -15,7 +15,8 @@ enum {
   CMD_FLASHLIGHT,
   CMD_SPARKLE,
   CMD_WIDTH,
-  CMD_HELP
+  CMD_HELP,
+  CMD_QUIT
 };
 
 enum {
@@ -35,6 +36,15 @@ enum {
   TID_RUN,
   TID_BLINK,
   TID_SPARKLE
+};
+
+enum {
+  INT_SILENT = -1,    //Explicitly suppress message.
+  INT_DECIMAL=3,
+  INT_PERCENT=4,
+  INT_DIRECTION=5,
+  INT_COLOR=6,
+  INT_POSITIVE=7
 };
 
 #endif //ENUMS_H

@@ -17,6 +17,10 @@ extern SoftwareSerial BlueSerial;
 extern COLOR PIXELS[];
 extern Rain rain;
 
+extern const short NUM_TIMERS;
+extern unsigned long TIME_NOW; //The current time (in ms)
+extern unsigned long TIMERS[ ];
+
 extern const short MAX_BANDS;
 extern COLOR BANDS[];
 extern int BAND_WIDTH;
@@ -31,14 +35,20 @@ extern unsigned short RAND_ON_MS;
 extern signed short RUN_DIR;
 extern unsigned short RUN_ON_MS;
 extern unsigned short RUN_XFADE_MS;
+extern int RUN_MODE;  //Displaying or fading
+extern int RUN_START; //Where the run currently starts.
+
 extern unsigned short SPARKLE_MS;
 extern unsigned short SPARKLE_CHANCE;
 extern COLOR SPARKLE_COLOR;
+
 extern unsigned short BLINK[];
 extern bool BLINKING;
 
-extern bool times_up(unsigned long to_check, int timer_id);
-extern void renderLEDS();
-extern unsigned char clamp(signed int val);
+bool times_up(unsigned long to_check, int timer_id);
+void renderLEDS();
+void initializeParameters();
+unsigned char clamp(signed int val);
+void handleRun();
 
 #endif //EXTERNS_H
