@@ -14,8 +14,12 @@
 #include "color.h"
 
 //  STATE MACHINE VARIABLES //////////////////////////////////////
-char CMDBUF[32];
+const int CMDBUF_SIZE = 64;
+char CMDBUF[CMDBUF_SIZE];
+char *CMDPTR;
 int  CMDBUFIDX=0;
+int CMDCOUNT; //Number of tokens in this command line
+int CMDTOKEN; //Current token in command line.
 int CMD = -1; //Command waiting for parameters.  -1 for none.
 int PARAM= 0; //Which param we're waiting on for this command.
 int PTMP = 0;
@@ -39,18 +43,18 @@ const char CMD13[] PROGMEM = "QUIT";
 
 const char *const CMDS[] PROGMEM = { CMD0, CMD1, CMD2, CMD3, CMD4, CMD5, CMD6, CMD7, CMD8, CMD9, CMD10, CMD11, CMD12, CMD13 };
 
-const char DESC0[] PROGMEM = "Digital Rain\n\t<decay_odds>Likelihood of increasing base color\n\t<shift_odds>Likelihood of changing base color.";
-const char DESC1[] PROGMEM = "All a random color";
-const char DESC2[] PROGMEM = "Each a random color";
+const char DESC0[] PROGMEM = "Digital Rain\n\t<shift_odds>\\tLikelihood of changing base color.\n\t<decay_odds>\tLikelihood of increasing base color";
+const char DESC1[] PROGMEM = "All a random color: <delay_ms>";
+const char DESC2[] PROGMEM = "Each a random color: <delay_ms>";
 const char DESC3[] PROGMEM = "Pride Rainbow";
-const char DESC4[] PROGMEM = "All to a color";
-const char DESC5[] PROGMEM = "List of colors";
-const char DESC6[] PROGMEM = "Chase params for lists";
-const char DESC7[] PROGMEM = "Strobe/fade params for all patterns";
+const char DESC4[] PROGMEM = "All to a color:\t<color>\t0-888 or name";
+const char DESC5[] PROGMEM = "List of colors:\t[color1 color2 .. colorN]";
+const char DESC6[] PROGMEM = "Animate display:\t<direction> <ON_ms> [xfade_ms]";
+const char DESC7[] PROGMEM = "Blink on and off:\t<ON_ms> <OFF_ms> <fade_out_ms> <fade_in_ms>";
 const char DESC8[] PROGMEM = "Max brightness for all patterns";
 const char DESC9[] PROGMEM = "Toggle flashlight on and off.";
-const char DESC10[] PROGMEM = "Sparkle behavior for patterns.";
-const char DESC11[] PROGMEM = "Change width of list bands";
+const char DESC10[] PROGMEM = "Sparkle: <percent_chance> <color> <delay_ms> <sparkle_size>\n\tnegative size for random to size * -1";
+const char DESC11[] PROGMEM = "Width: <pixels_per_band>";
 const char DESC12[] PROGMEM = "Display this.\n\tCase-insensitive partial names allowed.";
 const char DESC13[] PROGMEM = "QUIT current display, reset to default.";
 
@@ -119,8 +123,9 @@ const char STR4[] PROGMEM = "Percentage must be 0-100";
 const char STR5[] PROGMEM = "Direction must be -1 to 1";
 const char STR6[] PROGMEM = "Invalid Color ID";
 const char STR7[] PROGMEM = "Parameter must be a positive integer";
+const char STR8[] PROGMEM = "Syntax: ";
 
-const char *const STRS[] PROGMEM = { STR0, STR1, STR2, STR3, STR4, STR5, STR6, STR7 };
+const char *const STRS[] PROGMEM = { STR0, STR1, STR2, STR3, STR4, STR5, STR6, STR7, STR8 };
 
 //  FUNCTIONS  ////////////////////////////////////////////////////////////////
 void getMem(char* const* table, int index)
@@ -179,9 +184,9 @@ int findInTable(char* const* table, int len)
     getMem(table,i);
 
     int idx=0;
-    while( idx < strlen(CMDBUF)  && idx < strlen(BUFFER) )
+    while( idx < strlen(CMDPTR)  && idx < strlen(BUFFER) )
     {
-      c=toupper( CMDBUF[idx] );
+      c=toupper( *(CMDPTR+idx) );
     
       if ( c != BUFFER[idx] )
       {
@@ -218,21 +223,24 @@ void endParse( bool changed)
   PARAM = 0;
 }
 
-bool parseInt(int &val, int int_type)
+bool parseInt(int &val, int int_type, bool verbose = true)
 {
-  //Try to convert CMDBUF to a number.  Returns false if not int.  value as val param, 
+  //Try to convert CMDPTR to a number.  Returns false if not int.  value as val param, 
   char *c;
   char *endptr;
 
-  c = CMDBUF;
+  c = CMDPTR;
+
   // Convert the string to a long integer
   val = (int)strtol(c, &endptr, 10);
-  if (endptr != c+(strlen(CMDBUF)))
+
+  if (*endptr != '\0')
   {
-    if (int_type != INT_COLOR)
+    if (int_type == INT_COLOR)
     {
       //Failed to parse.
-      printlnMsg(STRS, int_type);
+      if (verbose)
+        printlnMsg(STRS, int_type);
     }
     return false;
   }
@@ -266,41 +274,48 @@ bool parseInt(int &val, int int_type)
       }
       break;
     default:
-      //INT_DECIMAL and INT_COLOR are silent.
       break;
   }
 
-  if (bad && int_type != INT_COLOR)
+  if (verbose || (bad && int_type != INT_COLOR))
   {
     printlnMsg(STRS, int_type);
   }
-  return true;
+  return !bad;
 }
 
-bool parseColor(COLOR &color)
+bool parseColor(COLOR &color, bool verbose=true)
 {
   //A color is either 1-3 0-8 values (eg: 3, 43, 008) or a named color like RED.
   //Color is returned in parameter.  true/false as rval for parsing success/fail
 
   int val;
   color.l = 0;
-  if (parseInt(val, INT_COLOR))
+  if (parseInt(val, INT_COLOR, verbose))
   {
     //Might be a numeric  (hand parsing because it's easier)
-    if (strlen(CMDBUF)<0 || strlen(CMDBUF)>3)
+    int buflen = strlen(CMDPTR);
+    if (buflen<0 || buflen>3)
     {
       return false;
     }
-    for (int i=0;i<strlen(CMDBUF) && i<3;++i)
+    char *c;
+    c = CMDPTR;
+    for (int i=0;i<buflen && i<3;++i)
     {
-      if (CMDBUF[i] >= '0' && CMDBUF[i] <= '8')
+      if (*c >= '0' && *c <= '8')
       {
-        color.c[2-i] = (unsigned char)clamp((int)(CMDBUF[i] - '0') * 32);
+        color.c[2-i] = (unsigned char)clamp((int)(*c - '0') * 32);
       }
       else
       {
+        if (*c == '\0')
+        {
+          return true;
+        }
         return false;
       }
+      c++;
     }
     return true;
   }
@@ -329,7 +344,7 @@ void makeBandWidth(int width)
   }
 }
 
-void parseParams()
+void parseParams() //Interactive mode commands
 {
   int val;
   COLOR color;
@@ -417,7 +432,7 @@ void parseParams()
         }
         else
         {
-          if (CMDBUF[0] == 'x' || CMDBUF[0] == 'X')
+          if (*CMDPTR == 'x' || *CMDPTR == 'X')
           {
             makeBandWidth(-1);
             endParse(true);
@@ -547,7 +562,7 @@ void parseParams()
       if (PARAM == 1) //ON For
       {
 
-        if (CMDBUF[0] == 'x' || CMDBUF[0] == 'X')
+        if (*CMDPTR == 'x' || *CMDPTR == 'X')
         {
           BLINKING=false;
           endParse(true);
@@ -677,10 +692,151 @@ void parseParams()
   PARAM++;
 }
 
-void parseInput()
+void getNextToken()
 {
+  CMDPTR+=strlen(CMDPTR)+1;
+}
+
+void trimStr(char *s) {
+  
+  int i = 0, j = 0;
+
+  // Skip leading spaces
+  while (s[i] == ' ') i++; 
+
+  // Shift the characters of string to remove
+  // leading spaces
+  while (s[j++] = s[i++]);
+
+  //Trim trailing spaces.
+  for(i=strlen(s)-1;i=0;i--)
+  {
+    if (s[i] == ' ')
+    {
+      s[i] ='\0';
+    }
+  }
+}
+
+void parseLine()
+{
+  //Handles a line with parameters
+  CMDCOUNT = 1;
+  trimStr(CMDBUF);
+  char *c;
+  c=CMDBUF;
+
+  int blen = strlen(CMDPTR);
+  for (int i=0;i<blen;++i)
+  {
+    if ( *c == ' ')
+    {
+      CMDCOUNT++;
+      *c='\0';
+    }
+    c++;
+  }
+
+  BlueSerial.print("COMMAND:");
+  for(int i=0;i<CMDCOUNT;++i)
+  {
+    BlueSerial.print(" ");
+    BlueSerial.print(CMDPTR);
+    getNextToken();
+  }
+  BlueSerial.println("");
+  
+  CMDPTR = CMDBUF;  //reset point
+
+  //Is valid command?
+  CMD = findInTable(CMDS, MAX_CMDS);
   if (CMD < 0)
   {
+    //Print error message.
+    //Unable to uniquely match
+    printMsg(STRS, 2);
+    return;
+  }
+
+  getNextToken();
+
+  COLOR color;
+  int params[5];
+ 
+  switch(CMD)
+  {
+    case CMD_RND:
+    case CMD_CHAOS:
+      if ( parseInt(params[0], INT_DECIMAL, false) )
+      {
+        RAND_ON_MS = params[0];
+        endParse(true);
+        return;
+      }
+      break;
+    case CMD_COLOR:
+      if ( parseColor( color, false ) )
+      {
+        PIXELS[0].l = color.l;
+        endParse(true);
+        return;
+      }
+      break;
+    case CMD_LIST:
+      params[0] = 0;
+      for (int i=0;i<CMDCOUNT-1 && params[0] < MAX_BANDS;++i)
+      {
+        if ( parseColor( color, false ) )
+        {
+          BANDS[params[0]].l = color.l;
+          params[0]++;
+          NUM_BANDS = params[0];
+          getNextToken();
+        }
+        else
+        {
+          break;
+        }
+      }
+      if (NUM_BANDS > 0)
+      {
+        makeBandWidth(-1);
+        endParse(true);
+        return;
+      }
+      break;
+    case CMD_RAIN:
+      if ( parseInt(params[0], INT_POSITIVE, false) )
+      {
+        getNextToken();
+        if ( parseInt(params[1], INT_POSITIVE, false) )
+        {
+          rain.mShiftOdds = params[0];
+          rain.mDecayRate = params[1];
+          endParse(true);
+          return;
+        }
+      }
+      break;
+  }
+  printMsg(STRS, 8); //Syntax
+  printlnMsg(DESCS, CMD);
+}
+
+void parseInput()
+{
+  CMDPTR = CMDBUF;
+  if (CMD < 0)
+  {
+    for (int i=0;i<strlen(CMDPTR);++i)
+    {
+      if (*(CMDPTR+i)==' ')
+      {
+        //This buffer contains spaces. Treat as line.
+        parseLine();
+        return;
+      }
+    }
     //This is a command, how exciting!
     CMD = findInTable(CMDS, MAX_CMDS);
     if (CMD < 0)
@@ -688,7 +844,7 @@ void parseInput()
       //Print error message.
       //Unable to uniquely match
       printMsg(STRS, 2);
-      BlueSerial.println(CMDBUF);
+      BlueSerial.println(CMDPTR);
     }
     else
     {
@@ -699,7 +855,7 @@ void parseInput()
   else
   {
     //Echo what was sent.
-    BlueSerial.println(CMDBUF);
+    BlueSerial.println(CMDPTR);
   }
   if (CMD >= 0)
   {
@@ -718,7 +874,7 @@ void handleInput()
     if ((CMDBUF[CMDBUFIDX] == '\r'
         || CMDBUF[CMDBUFIDX] == '\n'
         || CMDBUF[CMDBUFIDX] == '\0'
-        || CMDBUFIDX==30) && CMDBUFIDX > 0)
+        || CMDBUFIDX==(CMDBUF_SIZE-2)) && CMDBUFIDX > 0)
     {
       delay(20);
       CMDBUF[CMDBUFIDX] ='\0';
