@@ -774,6 +774,21 @@ void parseLine()
         return;
       }
       break;
+    case CMD_MAXBRIGHT:
+      if ( parseInt(params[0], INT_PERCENT, false) )
+      {
+        MAXBRIGHT = params[0];
+        rain.mMaxBrightness=round( ((float)MAXBRIGHT/100.0f) * (float)255 );
+        endParse(true);       
+      }
+    case CMD_WIDTH:
+      if ( parseInt(params[0], INT_DECIMAL, false) )
+      {
+        makeBandWidth(params[0]);
+        endParse(true); 
+        return;      
+      }
+      break;
     case CMD_COLOR:
       if ( parseColor( color, false ) )
       {
@@ -823,6 +838,34 @@ void parseLine()
         }
       }
       break;
+    case CMD_SPARKLE:
+      if( parseInt(params[0], INT_PERCENT, false) )
+      {
+        if(params[0] == 0)
+        {
+          SPARKLE_CHANCE = 0;
+          endParse(true); //Don't bother to parse further.
+        }
+        getNextToken();
+        if( parseColor(color, false) )
+        {
+          getNextToken();
+          if( parseInt(params[1], INT_DECIMAL, false) )
+          {
+            getNextToken();
+            if( parseInt(params[2], INT_POSITIVE, false) )
+            {
+              SPARKLE_CHANCE = params[0];
+              SPARKLE_COLOR.l = color.l;
+              SPARKLE_MS = params[1];
+              SPARKLE_SIZE = params[2];
+              endParse(true);
+              return;
+            }
+          }
+        }
+      }
+      break;
     case CMD_BLINK:
       if( parseInt(params[0], INT_DECIMAL, false) )
       {
@@ -849,6 +892,8 @@ void parseLine()
         if (toupper(*CMDPTR) == 'X')
         {
           BLINKING=false;
+          endParse(true);
+          return;
         }
       }
     case CMD_RAIN:
@@ -867,6 +912,7 @@ void parseLine()
   }
   printMsg(STRS, 8); //Syntax
   printlnMsg(DESCS, CMD);
+  endParse(true);
 }
 
 void parseInput()

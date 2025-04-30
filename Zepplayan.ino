@@ -22,7 +22,7 @@
 //const unsigned long gTimeToCooldown = 1000l * 3l;        //3 sec
 
 const short PIN_LED = 6;  //Pin connecting the IN on the LED strip to the CPU board.
-const short NUM_LEDS = 16; //Num LEDS in our array.
+const short NUM_LEDS = 50; //Num LEDS in our array.
 const short MAX_BANDS=12;  //Maximum number of color bands.
 
 SoftwareSerial BlueSerial(4, 5); //TX, RX pins
