@@ -805,6 +805,52 @@ void parseLine()
         return;
       }
       break;
+    case CMD_RUN:
+      if( parseInt(params[0], INT_DIRECTION, false) )
+      {
+        getNextToken();
+        if( parseInt(params[1], INT_DECIMAL, false) )
+        {
+          getNextToken();
+          if( parseInt(params[2], INT_DECIMAL, false) )
+          {
+            RUN_DIR = params[0];
+            RUN_ON_MS = params[1];
+            RUN_XFADE_MS = params[2];
+            endParse(true);
+            return;
+          }
+        }
+      }
+      break;
+    case CMD_BLINK:
+      if( parseInt(params[0], INT_DECIMAL, false) )
+      {
+        getNextToken();
+        for (int i=1;i<4;++i)
+        {
+          if( !parseInt(params[i], INT_DECIMAL, false) )
+          {
+            printMsg(STRS, 8); //Syntax
+            printlnMsg(DESCS, CMD);
+            return;
+          }
+        }
+        for (int i=0;i<4;++i)
+        {
+          BLINK[i] = params[i];
+        }
+        BLINKING=true;
+        endParse(true);
+        return;
+      }
+      else
+      {
+        if (toupper(*CMDPTR) == 'X')
+        {
+          BLINKING=false;
+        }
+      }
     case CMD_RAIN:
       if ( parseInt(params[0], INT_POSITIVE, false) )
       {

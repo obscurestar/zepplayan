@@ -150,13 +150,10 @@ void doBlink()
     }
     else
     {
-      if (BLINK[BLINK_STATE] > 0)
+      percent = (float)(TIME_NOW - TIMERS[TID_BLINK])/(float)BLINK[BLINK_STATE];
+      if (percent>1.0f)
       {
-        percent = (float)(TIME_NOW - TIMERS[TID_BLINK])/(float)BLINK[BLINK_STATE];
-        if (percent>1.0f)
-        {
-          percent = 0.0f;
-        }
+        percent = 1.0f;
       }
 
       if (BLINK_STATE==BLINK_OUT)
@@ -177,7 +174,21 @@ void doBlink()
   }
   if (times_up(BLINK[BLINK_STATE], TID_BLINK))
   {
-    BLINK_STATE = (BLINK_STATE+1) % 4;
+    switch (BLINK_STATE)
+    {
+      case 0:
+        BLINK_STATE = 2;
+        break;
+      case 1:
+        BLINK_STATE = 3;
+        break;
+      case 2:
+        BLINK_STATE = 1;
+        break;
+      default:
+        BLINK_STATE = 0;
+        break;
+    }
   }
 }
 
