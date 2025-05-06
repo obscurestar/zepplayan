@@ -50,8 +50,8 @@ const char DESC3[] PROGMEM = "Pride Rainbow";
 const char DESC4[] PROGMEM = "All to a color:\t<color>\t0-888 or name";
 const char DESC5[] PROGMEM = "List of colors:\t[color1 color2 .. colorN]";
 const char DESC6[] PROGMEM = "Animate display:\t<direction> <ON_ms> [xfade_ms]";
-const char DESC7[] PROGMEM = "Blink on and off:\t<ON_ms> <OFF_ms> <fade_out_ms> <fade_in_ms>";
-const char DESC8[] PROGMEM = "Max brightness for all patterns";
+const char DESC7[] PROGMEM = "Blink on and off:\t<ON_ms> <fade_out_ms> <OFF_ms> <fade_in_ms>";
+const char DESC8[] PROGMEM = "Max brightness:\t<percent>\t 0-100% of maximum";
 const char DESC9[] PROGMEM = "Toggle flashlight on and off.";
 const char DESC10[] PROGMEM = "Sparkle: <percent_chance> <color> <delay_ms> <sparkle_size>\n\tnegative size for random to size * -1";
 const char DESC11[] PROGMEM = "Width: <pixels_per_band>";
@@ -101,7 +101,7 @@ const char PARAM9[] PROGMEM = "direction (-1 to 1): ";
 const char PARAM10[] PROGMEM = "color (RGB 0 to oct 888 or name. x to end): ";
 const char PARAM11[] PROGMEM = "frequency (ms): ";
 const char PARAM12[] PROGMEM = "Decay Odds (lower is faster): ";
-const char PARAM13[] PROGMEM = "ON ms (x to end): ";
+const char PARAM13[] PROGMEM = "ON ms (x to stop, blink disabled during input): ";
 const char PARAM14[] PROGMEM = "Shift Odds (lower is faster): ";
 const char PARAM15[] PROGMEM = "Sparkle size in pixels. Negative for random to num: ";
 
@@ -223,12 +223,30 @@ void endParse( bool changed)
   PARAM = 0;
 }
 
+void parseError(int int_type, bool verbose = true)
+{
+  if (!verbose ) return;
+  
+  BlueSerial.print("ERROR command ");
+  printMsg(CMDS,CMD);
+  BlueSerial.print(", parameter ");
+  BlueSerial.print(PARAM);
+  BlueSerial.print(": ");
+  BlueSerial.println(CMDPTR);
+  printlnMsg(STRS, int_type);
+}
+
 bool parseInt(int &val, int int_type, bool verbose = true)
 {
   //Try to convert CMDPTR to a number.  Returns false if not int.  value as val param, 
   char *c;
   char *endptr;
 
+  if (int_type == INT_COLOR)
+  {
+    verbose = false;
+  }
+  
   c = CMDPTR;
 
   // Convert the string to a long integer
@@ -236,52 +254,45 @@ bool parseInt(int &val, int int_type, bool verbose = true)
 
   if (*endptr != '\0')
   {
-    if (int_type == INT_COLOR)
-    {
-      //Failed to parse.
-      if (verbose)
-        printlnMsg(STRS, int_type);
-    }
+    //Failed to parse.
+    parseError(int_type, verbose);
+
     return false;
   }
 
-  bool bad=false;
+  bool good=true;
   //Bounds checking
   switch(int_type)
   {
     case INT_PERCENT:
       if (val < 0 || val > 100)
       {
-        bad = true;
+        good = false;
       }
       break;
     case INT_DIRECTION:
       if (val < -1 || val > 1)
       {
-        bad = true;
+        good = false;
       }
       break;
     case INT_COLOR:
-      if (val < 0 || val > 8)
-      {
-        bad = true;
-      }
-      break;
+      break;  //Let color parser handle this
     case INT_POSITIVE:
       if (val < -1)
       {
-        bad = true;
+        good = false;
       }
       break;
     default:
       break;
   }
 
-  if (verbose || (bad && int_type != INT_COLOR))
+  if (!good)
   {
-    printlnMsg(STRS, int_type);
+    parseError(int_type, verbose);
   }
-  return !bad;
+  return good;
 }
 
 bool parseColor(COLOR &color, bool verbose=true)
@@ -291,17 +302,12 @@ bool parseColor(COLOR &color, bool verbose=true)
 
   int val;
   color.l = 0;
-  if (parseInt(val, INT_COLOR, verbose))
+  if (parseInt(val, INT_COLOR, false))
   {
-    //Might be a numeric  (hand parsing because it's easier)
-    int buflen = strlen(CMDPTR);
-    if (buflen<0 || buflen>3)
-    {
-      return false;
-    }
+
     char *c;
     c = CMDPTR;
-    for (int i=0;i<buflen && i<3;++i)
+    for (int i=0;i<3;++i)
     {
       if (*c >= '0' && *c <= '8')
       {
@@ -313,6 +319,7 @@ bool parseColor(COLOR &color, bool verbose=true)
         {
           return true;
         }
+        parseError(INT_COLOR, verbose);
         return false;
       }
       c++;
@@ -329,6 +336,11 @@ bool parseColor(COLOR &color, bool verbose=true)
       return true;
     }
   }
+  if (toupper(*CMDPTR) != 'X')
+  {
+    parseError(INT_COLOR, verbose);
+  }
+
   return false;
 }
 
@@ -342,6 +354,22 @@ void makeBandWidth(int width)
   {
     BAND_WIDTH = width;
   }
+}
+
+bool validateBlink()
+{
+  for (int i=0;i<4;++i)
+  {
+    if (BLINK[i] != 0) 
+    {
+      BLINKING = true;
+      return true; 
+    }
+  }
+
+  BLINKING=false;
+  BlueSerial.println("At least 1 blink param must be non-zero");
+  return false;
 }
 
 void parseParams() //Interactive mode commands
@@ -373,6 +401,7 @@ void parseParams() //Interactive mode commands
           endParse(true);
           return;
         }
+        PARAM = 0;
       }
 
       printMsg(PARAMS, 0);
@@ -387,6 +416,7 @@ void parseParams() //Interactive mode commands
           endParse(true);
           return;
         }
+        PARAM = 0;
       }
       printMsg(PARAMS, 6);
       break;
@@ -399,6 +429,7 @@ void parseParams() //Interactive mode commands
           endParse(true);
           return;
         }
+        PARAM = 0;
       }
 
       printMsg(PARAMS, 5); //pixels per band message
@@ -418,13 +449,14 @@ void parseParams() //Interactive mode commands
       {
         if(parseColor( color ))
         {
+          makeBandWidth(1);
           //Valid color store and increase number of bands.
           BANDS[ NUM_BANDS ].l = color.l;
           NUM_BANDS++;
           if (NUM_BANDS == MAX_BANDS)
           {
             //Don't exceed memory.
-            makeBandWidth(PTMP);
+            makeBandWidth(-1);
             endParse(true);
             return;
           }
@@ -432,7 +464,7 @@ void parseParams() //Interactive mode commands
         }
         else
         {
-          if (*CMDPTR == 'x' || *CMDPTR == 'X')
+          if (toupper(*CMDPTR) == 'X')
           {
             makeBandWidth(-1);
             endParse(true);
@@ -462,9 +494,10 @@ void parseParams() //Interactive mode commands
           endParse(true);
           return;
         }
+        PARAM = 0;
       }
       
-      printlnMsg(STRS, 4);
+      printlnMsg(PARAMS, 7);
 
       break;
     case CMD_RUN:
@@ -530,33 +563,33 @@ void parseParams() //Interactive mode commands
         if (parseInt(val,INT_DECIMAL))
         {
           BLINK[BLINK_IN] = val;
-          BLINKING=true;
+          validateBlink();
           endParse(true);
           return;
         }
-        printMsg(PARAMS,4);
+        printMsg(PARAMS,4); //Display IN prompt
         break;
       }
-      if (PARAM == 3)  //FadOut ms
-      {
-        if (parseInt(val,INT_DECIMAL))
-        {
-          BLINK[BLINK_OUT] = val;
-          printMsg(PARAMS,4);
-          break;
-        }
-        printMsg(PARAMS,3);
-        return;
-      }
-      if (PARAM == 2) //OFF For
+      if (PARAM == 3)  //OFF ms
       {
         if (parseInt(val,INT_DECIMAL))
         {
           BLINK[BLINK_OFF] = val;
-          printMsg(PARAMS,3);
+          printMsg(PARAMS,4); //Display IN prompt
           break;
         }
-        printMsg(PARAMS, 1);
+        printMsg(PARAMS,2); //Display OFF prompt
+        return;
+      }
+      if (PARAM == 2) //Fade out For
+      {
+        if (parseInt(val,INT_DECIMAL))
+        {
+          BLINK[BLINK_OUT] = val;
+          printMsg(PARAMS,2); //Display OFF prompt
+          break;
+        }
+        printMsg(PARAMS, 3); //Display OUT prompt
         return;
       }
       if (PARAM == 1) //ON For
@@ -571,15 +604,16 @@ void parseParams() //Interactive mode commands
         else if ( parseInt(val, INT_DECIMAL) )
         {
           BLINK[BLINK_ON] = val;
-          printMsg(PARAMS, 1);
+          printMsg(PARAMS, 3); //Going to fade out
           break;
         }
         PARAM=0;
       }
       if (PARAM == 0)
       {
-        printMsg(PARAMS, 13);
+        printMsg(PARAMS, 13); //Display ON prompt
       }
+      BLINKING = false;
       break;   
     case CMD_RAIN:
       if (PARAM > 1)
@@ -591,6 +625,7 @@ void parseParams() //Interactive mode commands
           return;
         }
         printMsg(PARAMS, 0);
+        PARAM = 1;
         break;
       }
       if (PARAM == 1)
@@ -736,18 +771,10 @@ void parseLine()
     }
     c++;
   }
-
-  BlueSerial.print("COMMAND:");
-  for(int i=0;i<CMDCOUNT;++i)
-  {
-    BlueSerial.print(" ");
-    BlueSerial.print(CMDPTR);
-    getNextToken();
-  }
-  BlueSerial.println("");
   
   CMDPTR = CMDBUF;  //reset point
-
+  BlueSerial.print("command> ");
+  
   //Is valid command?
   CMD = findInTable(CMDS, MAX_CMDS);
   if (CMD < 0)
@@ -755,11 +782,31 @@ void parseLine()
     //Print error message.
     //Unable to uniquely match
     printMsg(STRS, 2);
+    CMDPTR = CMDBUF;
+
+    for(int i=0;i<CMDCOUNT;++i)
+    {
+      BlueSerial.print(" ");
+      BlueSerial.print(CMDPTR);
+      getNextToken();
+    }
+    BlueSerial.println("");
     return;
   }
 
-  getNextToken();
+  CMDPTR = CMDBUF;  //reset to print
+  printMsg(CMDS,CMD);
+  for(int i=1;i<CMDCOUNT;++i)
+  {
+    getNextToken();
+    BlueSerial.print(" ");
+    BlueSerial.print(CMDPTR);
+  }
+  BlueSerial.println("");
 
+  CMDPTR = CMDBUF;  //Reset to parse
+  getNextToken();   //Move to first param.
+  
   COLOR color;
   int params[5];
  
@@ -779,8 +826,10 @@ void parseLine()
       {
         MAXBRIGHT = params[0];
         rain.mMaxBrightness=round( ((float)MAXBRIGHT/100.0f) * (float)255 );
-        endParse(true);       
+        endParse(true);
+        return;     
       }
+      break;
     case CMD_WIDTH:
       if ( parseInt(params[0], INT_DECIMAL, false) )
       {
@@ -869,9 +918,10 @@ void parseLine()
     case CMD_BLINK:
       if( parseInt(params[0], INT_DECIMAL, false) )
       {
-        getNextToken();
-        for (int i=1;i<4;++i)
+        for (int i=1;i<4;++i) //Loop through remaining blink params.
         {
+          getNextToken();
+
           if( !parseInt(params[i], INT_DECIMAL, false) )
           {
             printMsg(STRS, 8); //Syntax
@@ -883,7 +933,8 @@ void parseLine()
         {
           BLINK[i] = params[i];
         }
-        BLINKING=true;
+       
+        validateBlink();
         endParse(true);
         return;
       }
@@ -941,6 +992,7 @@ void parseInput()
     else
     {
       //Echo the command.
+      BlueSerial.print("Prompting for ");
       printlnMsg(CMDS,CMD);
     }
   }
@@ -955,6 +1007,14 @@ void parseInput()
   }
 }
 
+void flushBuffer()
+{
+  while (BlueSerial.available())
+    BlueSerial.read();
+  CMDBUFIDX = 0;
+  CMDBUF[0] = '\0';
+}
+
 void handleInput()
 {
   //Checks to see if user has entered something, parses if true.
@@ -963,23 +1023,19 @@ void handleInput()
   {
     CMDBUF[CMDBUFIDX] = BlueSerial.read();
 
-    if ((CMDBUF[CMDBUFIDX] == '\r'
+    if (CMDBUF[CMDBUFIDX] == '\r'
         || CMDBUF[CMDBUFIDX] == '\n'
         || CMDBUF[CMDBUFIDX] == '\0'
-        || CMDBUFIDX==(CMDBUF_SIZE-2)) && CMDBUFIDX > 0)
+        || CMDBUFIDX>=(CMDBUF_SIZE-1))
     {
-      delay(20);
       CMDBUF[CMDBUFIDX] ='\0';
       parseInput();
+      flushBuffer();
 
-      CMDBUFIDX = -1;
+      return;
     }
-    if (!(CMDBUFIDX==0
-        && ( CMDBUF[CMDBUFIDX] == '\r' 
-           ||CMDBUF[CMDBUFIDX] == '\n' )))
-    {
-      CMDBUFIDX++;
-    }
+
+    CMDBUFIDX++;
   }
 }
 

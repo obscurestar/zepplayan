@@ -138,56 +138,59 @@ void doBlink()
   {
     return;
   }
- 
+
+  bool needs_update = false;
   float percent = 1.0f;
   COLOR color;
-  
-  if (BLINK_STATE != BLINK_ON)
+
+  if (times_up(BLINK[BLINK_STATE], TID_BLINK))
   {
-    if (BLINK_STATE == BLINK_OFF)
+    do
     {
-      percent = 1.0;
-    }
-    else
+      BLINK_STATE = (BLINK_STATE + 1) % 4;
+    } while (BLINK[BLINK_STATE] == 0);
+    needs_update = true;
+  }
+
+  if (BLINK_STATE == BLINK_OFF)
+  {
+    percent = 0.0f;
+    needs_update = true; //HACK to fix off mode.
+  }
+
+  if (BLINK_STATE == BLINK_OUT || BLINK_STATE == BLINK_IN)
+  {
+    needs_update = true;
+    percent = (float)(TIME_NOW - TIMERS[TID_BLINK])/(float)BLINK[BLINK_STATE];
+    if (percent>1.0f)
     {
-      percent = (float)(TIME_NOW - TIMERS[TID_BLINK])/(float)BLINK[BLINK_STATE];
-      if (percent>1.0f)
-      {
-        percent = 1.0f;
-      }
-
-      if (BLINK_STATE==BLINK_OUT)
-      {
-        percent = 1.0f - percent;
-      }
+      percent = 1.0f;
     }
 
+    if (BLINK_STATE==BLINK_OUT)
+    {
+      percent = 1.0f - percent;
+    }
+    if (percent < 0.0f)
+    {
+      percent = 0.0f;
+    }
+    if (percent > 1.0f)
+    {
+      percent = 1.0f;
+    }
+  }
+
+  if ( needs_update )
+  {
     for (int i=0;i<NUM_LEDS;++i)
     {
       color.l = H_LEDS.getPixelColor(i);
       for(int j=0;j<4;++j)
       {
-        color.c[j] = (unsigned char)round((float)color.c[j] * percent);
-      }
-      H_LEDS.setPixelColor(i, color.l);
-    }
-  }
-  if (times_up(BLINK[BLINK_STATE], TID_BLINK))
-  {
-    switch (BLINK_STATE)
-    {
-      case 0:
-        BLINK_STATE = 2;
-        break;
-      case 1:
-        BLINK_STATE = 3;
-        break;
-      case 2:
-        BLINK_STATE = 1;
-        break;
-      default:
-        BLINK_STATE = 0;
-        break;
+       color.c[j] = (unsigned char)round((float)color.c[j] * percent);
+     }
+     H_LEDS.setPixelColor(i, color.l);
     }
   }
 }
